@@ -1,0 +1,22 @@
+version: "3.8"
+services:
+  redis:
+    image: redis:7
+    container_name: collab-redis
+    ports:
+      - "6379:6379"
+
+  postgres:
+    image: postgres:15
+    container_name: collab-postgres
+    environment:
+      POSTGRES_DB: collabdb
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:

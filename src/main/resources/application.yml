@@ -1,0 +1,26 @@
+server:
+  port: 8080
+
+spring:
+  redis:
+    host: localhost
+    port: 6379
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/collabdb
+    username: postgres
+    password: postgres
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+
+security:
+  jwt:
+    secret: "replace_this_with_a_strong_secret_or_set_ENV_VAR"
+    expiration-ms: 3600000
+
+aws:
+  s3:
+    enabled: false
+    bucket: collab-bucket

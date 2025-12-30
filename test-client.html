@@ -1,0 +1,62 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <title>Collab WebSocket Test (Auth)</title>
+  <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1.6.1/dist/sockjs.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/stompjs@2.3.3/lib/stomp.min.js"></script>
+</head>
+<body>
+  <h3>Collab WebSocket Test (Auth)</h3>
+  <div>
+    <input id="token" placeholder="Paste JWT here" style="width:60%"/>
+    <button id="connect">Connect (with token)</button>
+    <button id="send">Send Random Event</button>
+    <div id="status"></div>
+  </div>
+  <pre id="log" style="height:300px;overflow:auto;border:1px solid #ccc"></pre>
+
+<script>
+  let stompClient = null;
+  const status = document.getElementById('status');
+  const log = document.getElementById('log');
+
+  function logMsg(msg) {
+    log.textContent += msg + '\n';
+    log.scrollTop = log.scrollHeight;
+  }
+
+  document.getElementById('connect').onclick = function() {
+    const token = document.getElementById('token').value.trim();
+    if (!token) { alert('Paste JWT in box'); return; }
+    // pass token as access_token query param so handshake interceptor can read it
+    const socket = new SockJS('http://localhost:8080/ws?access_token=' + encodeURIComponent(token));
+    stompClient = Stomp.over(socket);
+    stompClient.connect({}, function(frame) {
+      status.textContent = 'Connected: ' + frame;
+      logMsg('Connected. Subscribing to /topic/model-updates');
+      stompClient.subscribe('/topic/model-updates', function(message) {
+        logMsg('Received: ' + message.body);
+      });
+    }, function(err){
+      status.textContent = 'Error: ' + err;
+      logMsg('Connect error: ' + JSON.stringify(err));
+    });
+  };
+
+  document.getElementById('send').onclick = function() {
+    if (!stompClient) { alert('Connect first'); return; }
+    const event = {
+      modelId: 'M-' + Math.floor(Math.random()*10),
+      featureId: 'F-' + Math.floor(Math.random()*1000),
+      changeType: 'UPDATE_DIM',
+      author: 'testUser',
+      timestamp: new Date().toISOString(),
+      payload: JSON.stringify({dim: Math.random()*100})
+    };
+    stompClient.send('/app/update-model', {}, JSON.stringify(event));
+    logMsg('Sent: ' + JSON.stringify(event));
+  };
+</script>
+</body>
+</html>
