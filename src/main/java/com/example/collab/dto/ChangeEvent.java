@@ -9,6 +9,7 @@ public class ChangeEvent {
     private String author;
     private Instant timestamp;
     private String payload; // free-form JSON with details
+    private String originId; // instance id of the server that published this event
 
     public ChangeEvent() {}
 
@@ -25,4 +26,6 @@ public class ChangeEvent {
     public void setTimestamp(Instant timestamp) { this.timestamp = timestamp; }
     public String getPayload() { return payload; }
     public void setPayload(String payload) { this.payload = payload; }
+    public String getOriginId() { return originId; }
+    public void setOriginId(String originId) { this.originId = originId; }
 }

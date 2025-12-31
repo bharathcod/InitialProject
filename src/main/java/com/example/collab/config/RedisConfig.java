@@ -13,6 +13,10 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 public class RedisConfig {
 
     public static final String CHANNEL = "model-updates";
+    public static final String PERMISSIONS_CHANNEL = "permissions";
+    public static final String LOCKS_CHANNEL = "locks";
+    public static final String PRESENCE_CHANNEL = "presence";
+    public static final String FILES_CHANNEL = "files";
 
     @Bean
     public RedisMessageListenerContainer redisContainer(RedisConnectionFactory connectionFactory,
@@ -20,6 +24,8 @@ public class RedisConfig {
         RedisMessageListenerContainer container = new RedisMessageListenerContainer();
         container.setConnectionFactory(connectionFactory);
         container.addMessageListener(listenerAdapter, new PatternTopic(CHANNEL));
+        // listen for permission events as well
+        container.addMessageListener(listenerAdapter, new PatternTopic(PERMISSIONS_CHANNEL));
         return container;
     }
 

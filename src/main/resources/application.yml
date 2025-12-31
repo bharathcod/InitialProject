@@ -24,3 +24,7 @@ aws:
   s3:
     enabled: false
     bucket: collab-bucket
+
+logging:
+  level:
+    com.example.collab: DEBUG

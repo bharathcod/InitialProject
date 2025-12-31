@@ -9,22 +9,137 @@
 <body>
   <h3>Collab WebSocket Test (Auth)</h3>
   <div>
+    <!-- Login form -->
+    <input id="loginUser" placeholder="username" style="width:120px"/>
+    <input id="loginPass" type="password" placeholder="password" style="width:140px"/>
+    <button id="loginBtn">Login</button>
+    <label style="margin-left:8px"><input type="checkbox" id="autoConnect"/> Auto-connect</label>
+    <span id="loginStatus" style="margin-left:10px;color:green"></span>
+  </div>
+  <div>
     <input id="token" placeholder="Paste JWT here" style="width:60%"/>
     <button id="connect">Connect (with token)</button>
     <button id="send">Send Random Event</button>
+    <button id="togglePerms" disabled>Subscribe Permissions</button>
     <div id="status"></div>
   </div>
-  <pre id="log" style="height:300px;overflow:auto;border:1px solid #ccc"></pre>
+
+  <h4>Projects</h4>
+  <div>
+    <input id="projName" placeholder="Project name" style="width:180px"/>
+    <input id="projDesc" placeholder="Description" style="width:220px"/>
+    <input id="projModelId" placeholder="ModelId (optional)" style="width:160px"/>
+    <button id="createProjBtn">Create Project</button>
+    <button id="listProjBtn">List Projects</button>
+  </div>
+  <pre id="projectsList" style="height:120px;overflow:auto;border:1px solid #ccc"></pre>
+
+  <h4>Models & Features</h4>
+  <div>
+    <strong>Create Model (optionally add features below)</strong><br/>
+    <input id="newModelName" placeholder="Model name" style="width:180px"/>
+    <input id="newModelDesc" placeholder="Description" style="width:220px"/>
+    <input id="newModelId" placeholder="ModelId (optional)" style="width:160px"/>
+    <button id="createModelBtn">Create Model</button>
+    <div style="margin-top:6px;">
+      <input id="newFeatureId" placeholder="Feature ID" style="width:120px"/>
+      <input id="newFeatureName" placeholder="Feature name" style="width:160px"/>
+      <input id="newFeatureDesc" placeholder="Feature description" style="width:160px"/>
+      <input id="newFeatureMeta" placeholder="metadata" style="width:120px" value="{}"/>
+      <button id="addFeatureToBuffer">Add Feature</button>
+    </div>
+    <pre id="newModelFeaturesList" style="height:60px;overflow:auto;border:1px solid #ccc"></pre>
+  </div>
+  <div>
+    <input id="modelIdSelect" placeholder="ModelId" style="width:160px" value="M-1"/>
+    <button id="getModelBtn">Get Model</button>
+    <select id="featureSelect" style="width:240px"><option value="">-- select feature --</option></select>
+    <button id="lockFeatureBtn" disabled>Lock Feature</button>
+    <button id="unlockFeatureBtn" disabled>Unlock Feature</button>
+    <span id="lockStatus" style="margin-left:12px;color:blue"></span>
+  </div>
+  <pre id="modelDetails" style="height:160px;overflow:auto;border:1px solid #ccc"></pre>
+  <pre id="log" style="height:220px;overflow:auto;border:1px solid #ccc"></pre>
+  <h4>Permission notifications</h4>
+  <pre id="permLog" style="height:120px;overflow:auto;border:1px solid #ccc"></pre>
+  <div style="margin-top:8px;">
+    <input id="shareProjectId" placeholder="Project ID" style="width:80px" value="1"/>
+    <input id="shareUsername" placeholder="Username" style="width:120px" value="bob"/>
+    <input id="shareRole" placeholder="Role" style="width:100px" value="EDITOR"/>
+    <button id="shareBtn" disabled>Share Project (sample)</button>
+  </div>
+
+  <div style="margin-top:8px;">
+    <input id="subscribeModelId" placeholder="Model ID to subscribe" style="width:100px" value="M-1"/>
+    <button id="subscribeModelBtn" disabled>Subscribe Model</button>
+  </div>
+
+  <div style="margin-top:8px;">
+    <input id="lockModelId" placeholder="Model ID" style="width:100px" value="M-1"/>
+    <input id="lockFeatureId" placeholder="Feature ID" style="width:120px" value="F-1"/>
+    <select id="lockLevel"><option>FEATURE</option><option>SKETCH</option></select>
+    <button id="lockBtn" disabled>Lock Feature</button>
+    <button id="unlockBtn" disabled>Unlock Feature</button>
+  </div>
+
+  <div style="margin-top:8px;">
+    <input id="fileModelId" placeholder="Model ID" style="width:100px" value="M-1"/>
+    <input id="fileName" placeholder="File name" style="width:180px" value="notes.txt"/>
+    <button id="fileAddBtn" disabled>Add File</button>
+  </div>
 
 <script>
   let stompClient = null;
+  let permSubscription = null;
   const status = document.getElementById('status');
   const log = document.getElementById('log');
+  const permLog = document.getElementById('permLog');
 
   function logMsg(msg) {
     log.textContent += msg + '\n';
     log.scrollTop = log.scrollHeight;
   }
+  function permLogMsg(msg) {
+    permLog.textContent += msg + '\n';
+    permLog.scrollTop = permLog.scrollHeight;
+  }
+
+  // Login handler: POST /auth/login and populate token box
+  document.getElementById('loginBtn').onclick = async function() {
+    const user = document.getElementById('loginUser').value.trim();
+    const pass = document.getElementById('loginPass').value;
+    const statusEl = document.getElementById('loginStatus');
+    statusEl.style.color = 'green';
+    statusEl.textContent = '';
+    if (!user || !pass) { statusEl.style.color = 'red'; statusEl.textContent = 'Fill username/password'; return; }
+    try {
+      const resp = await fetch('http://localhost:8080/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: user, password: pass })
+      });
+      if (!resp.ok) {
+        const t = await resp.text();
+        statusEl.style.color = 'red';
+        statusEl.textContent = 'Login failed: ' + resp.status + ' ' + t;
+        return;
+      }
+      const data = await resp.json();
+      const token = data.token;
+      if (!token) { statusEl.style.color = 'red'; statusEl.textContent = 'No token in response'; return; }
+      document.getElementById('token').value = token;
+      try { navigator.clipboard.writeText(token); } catch (e) {}
+      statusEl.style.color = 'green';
+      statusEl.textContent = 'Login OK (token copied)';
+      // auto-connect if requested
+      if (document.getElementById('autoConnect').checked) {
+        document.getElementById('connect').click();
+      }
+    } catch (e) {
+      statusEl.style.color = 'red';
+      statusEl.textContent = 'Login error';
+    }
+  };
 
   document.getElementById('connect').onclick = function() {
     const token = document.getElementById('token').value.trim();
@@ -34,10 +149,285 @@
     stompClient = Stomp.over(socket);
     stompClient.connect({}, function(frame) {
       status.textContent = 'Connected: ' + frame;
-      logMsg('Connected. Subscribing to /topic/model-updates');
-      stompClient.subscribe('/topic/model-updates', function(message) {
-        logMsg('Received: ' + message.body);
-      });
+      logMsg('Connected. Use the "Subscribe Model" control to subscribe to a specific model');
+
+      // enable permissions toggle and action buttons
+      document.getElementById('togglePerms').disabled = false;
+      document.getElementById('subscribeModelBtn').disabled = false;
+      document.getElementById('shareBtn').disabled = false;
+      document.getElementById('lockBtn').disabled = false;
+      document.getElementById('unlockBtn').disabled = false;
+      document.getElementById('fileAddBtn').disabled = false;
+      
+      // subscription toggles for model and files
+      let modelSubscription = null;
+      let filesSubscription = null;
+      let currentModelId = null;
+
+      function subscribeToModel(modelId) {
+        try {
+          if (modelSubscription) { modelSubscription.unsubscribe(); modelSubscription = null; }
+          if (filesSubscription) { filesSubscription.unsubscribe(); filesSubscription = null; }
+        } catch(e){}
+        currentModelId = modelId;
+        modelSubscription = stompClient.subscribe('/topic/model-updates/' + encodeURIComponent(modelId), function(message) {
+          logMsg('Received (model ' + modelId + '): ' + message.body);
+        });
+        filesSubscription = stompClient.subscribe('/topic/files/' + encodeURIComponent(modelId), function(message) {
+          logMsg('Received (file ' + modelId + '): ' + message.body);
+        });
+        logMsg('Subscribed to /topic/model-updates/' + modelId + ' and /topic/files/' + modelId);
+      }
+
+      document.getElementById('subscribeModelBtn').onclick = function() {
+        const modelId = document.getElementById('subscribeModelId').value.trim();
+        if (!modelId) { alert('Enter modelId'); return; }
+        subscribeToModel(modelId);
+      };
+      document.getElementById('shareBtn').disabled = false;
+      document.getElementById('togglePerms').onclick = function() {
+        if (!stompClient) { alert('Connect first'); return; }
+        if (!permSubscription) {
+          permSubscription = stompClient.subscribe('/topic/permissions', function(message) {
+            let body = message.body;
+            try { body = JSON.stringify(JSON.parse(message.body), null, 2); } catch(e) {}
+            permLogMsg('Permission event: ' + body);
+          });
+          this.textContent = 'Unsubscribe Permissions';
+          permLogMsg('Subscribed to /topic/permissions');
+        } else {
+          try { permSubscription.unsubscribe(); } catch(e){}
+          permSubscription = null;
+          this.textContent = 'Subscribe Permissions';
+          permLogMsg('Unsubscribed from /topic/permissions');
+        }
+      };
+
+      // hook up share button (sends POST /projects/{id}/share)
+      document.getElementById('shareBtn').onclick = async function() {
+        const token = document.getElementById('token').value.trim();
+        if (!token) { alert('Paste JWT in box'); return; }
+        const projectId = document.getElementById('shareProjectId').value.trim();
+        const username = document.getElementById('shareUsername').value.trim();
+        const role = document.getElementById('shareRole').value.trim();
+        if (!projectId || !username || !role) { alert('Fill projectId, username, role'); return; }
+        try {
+          const resp = await fetch('http://localhost:8080/projects/' + encodeURIComponent(projectId) + '/share', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+            body: JSON.stringify({ username: username, role: role })
+          });
+          if (!resp.ok) {
+            const text = await resp.text();
+            permLogMsg('Share error: ' + resp.status + ' ' + text);
+          } else {
+            const data = await resp.json();
+            permLogMsg('Share response: ' + JSON.stringify(data));
+          }
+        } catch (e) {
+          permLogMsg('Share request failed: ' + e.message);
+        }
+      };
+
+      // Create project
+      document.getElementById('createProjBtn').onclick = async function() {
+        const token = document.getElementById('token').value.trim();
+        if (!token) { alert('Paste JWT in box'); return; }
+        const name = document.getElementById('projName').value.trim();
+        const desc = document.getElementById('projDesc').value.trim();
+        const modelId = document.getElementById('projModelId').value.trim();
+        if (!name) { alert('Project name required'); return; }
+        try {
+          const resp = await fetch('http://localhost:8080/projects', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+            body: JSON.stringify({ name: name, description: desc, modelId: modelId })
+          });
+          if (!resp.ok) {
+            const txt = await resp.text();
+            permLogMsg('Create project error: ' + resp.status + ' ' + txt);
+            return;
+          }
+          const data = await resp.json();
+          permLogMsg('Created project: ' + JSON.stringify(data));
+          // refresh list
+          document.getElementById('listProjBtn').click();
+        } catch (e) {
+          permLogMsg('Create project request failed: ' + e.message);
+        }
+      };
+
+      // List projects
+      document.getElementById('listProjBtn').onclick = async function() {
+        const token = document.getElementById('token').value.trim();
+        if (!token) { alert('Paste JWT in box'); return; }
+        try {
+          const resp = await fetch('http://localhost:8080/projects', { headers: { 'Authorization': 'Bearer ' + token } });
+          if (!resp.ok) {
+            const txt = await resp.text();
+            document.getElementById('projectsList').textContent = 'List error: ' + resp.status + ' ' + txt;
+            return;
+          }
+          const data = await resp.json();
+          document.getElementById('projectsList').textContent = JSON.stringify(data, null, 2);
+        } catch (e) {
+          document.getElementById('projectsList').textContent = 'List request failed: ' + e.message;
+        }
+      };
+
+      // Create model with optional features
+      let newModelFeatures = [];
+      function refreshNewModelFeatureList() {
+        document.getElementById('newModelFeaturesList').textContent = JSON.stringify(newModelFeatures, null, 2);
+      }
+      document.getElementById('addFeatureToBuffer').onclick = function() {
+        const fid = document.getElementById('newFeatureId').value.trim();
+        const fname = document.getElementById('newFeatureName').value.trim();
+        const fdesc = document.getElementById('newFeatureDesc').value.trim();
+        let meta = document.getElementById('newFeatureMeta').value.trim();
+        if (!fid || !fname) { alert('Feature id and name required'); return; }
+        try { JSON.parse(meta); } catch(e) { alert('metadata must be valid JSON'); return; }
+        newModelFeatures.push({ featureId: fid, name: fname, description: fdesc, metadata: meta });
+        refreshNewModelFeatureList();
+        document.getElementById('newFeatureId').value=''; document.getElementById('newFeatureName').value=''; document.getElementById('newFeatureDesc').value=''; document.getElementById('newFeatureMeta').value='{}';
+      };
+      document.getElementById('createModelBtn').onclick = async function() {
+        const token = document.getElementById('token').value.trim();
+        const name = document.getElementById('newModelName').value.trim();
+        const desc = document.getElementById('newModelDesc').value.trim();
+        const modelId = document.getElementById('newModelId').value.trim();
+        if (!token) { alert('Paste JWT in box'); return; }
+        if (!name) { alert('Model name required'); return; }
+        try {
+          const payload = { name: name, description: desc, modelId: modelId, features: newModelFeatures };
+          const resp = await fetch('http://localhost:8080/models', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+            body: JSON.stringify(payload)
+          });
+          if (!resp.ok) { const txt = await resp.text(); alert('Create model failed: ' + resp.status + ' ' + txt); return; }
+          const data = await resp.json();
+          document.getElementById('modelIdSelect').value = data.modelId;
+          document.getElementById('newModelName').value=''; document.getElementById('newModelDesc').value=''; document.getElementById('newModelId').value=''; newModelFeatures = []; refreshNewModelFeatureList();
+          document.getElementById('getModelBtn').click();
+        } catch (e) { alert('Create model request failed: ' + e.message); }
+      };
+
+      // Model controls
+      document.getElementById('getModelBtn').onclick = async function() {
+        const token = document.getElementById('token').value.trim();
+        const modelId = document.getElementById('modelIdSelect').value.trim();
+        if (!token) { alert('Paste JWT in box'); return; }
+        if (!modelId) { alert('Enter modelId'); return; }
+        try {
+          const resp = await fetch('http://localhost:8080/models/' + encodeURIComponent(modelId), { headers: { 'Authorization': 'Bearer ' + token } });
+          if (!resp.ok) { document.getElementById('modelDetails').textContent = 'Error: ' + resp.status; return; }
+          const data = await resp.json();
+          document.getElementById('modelDetails').textContent = JSON.stringify(data, null, 2);
+          // populate features
+          const sel = document.getElementById('featureSelect'); sel.innerHTML = '<option value="">-- select feature --</option>';
+          (data.features || []).forEach(f => {
+            const opt = document.createElement('option'); opt.value = f.featureId; opt.textContent = f.featureId + ' - ' + f.name; sel.appendChild(opt);
+          });
+        } catch (e) { document.getElementById('modelDetails').textContent = 'Request failed: ' + e.message; }
+      };
+
+      document.getElementById('featureSelect').onchange = function() {
+        const modelId = document.getElementById('modelIdSelect').value.trim();
+        const featureId = this.value;
+        document.getElementById('lockFeatureBtn').disabled = !featureId;
+        document.getElementById('unlockFeatureBtn').disabled = !featureId;
+        // query lock state
+        queryLockState(modelId, featureId);
+      };
+
+      async function queryLockState(modelId, featureId) {
+        const token = document.getElementById('token').value.trim();
+        if (!token || !modelId || !featureId) return;
+        try {
+          const resp = await fetch('http://localhost:8080/models/' + encodeURIComponent(modelId) + '/features/' + encodeURIComponent(featureId) + '/lock', { headers: { 'Authorization': 'Bearer ' + token } });
+          if (resp.status === 204) { document.getElementById('lockStatus').textContent = 'Unlocked'; return; }
+          if (!resp.ok) { document.getElementById('lockStatus').textContent = 'Lock query error: ' + resp.status; return; }
+          const data = await resp.json();
+          document.getElementById('lockStatus').textContent = 'Locked by ' + data.owner + (data.expiresAt ? ' until ' + data.expiresAt : '');
+        } catch (e) { document.getElementById('lockStatus').textContent = 'Lock query failed'; }
+      }
+
+      document.getElementById('lockFeatureBtn').onclick = async function() {
+        const token = document.getElementById('token').value.trim();
+        const modelId = document.getElementById('modelIdSelect').value.trim();
+        const featureId = document.getElementById('featureSelect').value;
+        if (!token || !modelId || !featureId) return;
+        try {
+          const resp = await fetch('http://localhost:8080/models/' + encodeURIComponent(modelId) + '/features/' + encodeURIComponent(featureId) + '/lock', { method: 'POST', headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' }, body: JSON.stringify({ "ttlSeconds": 300 }) });
+          if (!resp.ok) { document.getElementById('lockStatus').textContent = 'Lock failed: ' + resp.status; return; }
+          const data = await resp.json();
+          document.getElementById('lockStatus').textContent = 'Locked by ' + data.owner + (data.expiresAt ? ' until ' + data.expiresAt : '');
+        } catch (e) { document.getElementById('lockStatus').textContent = 'Lock request failed'; }
+      };
+
+      document.getElementById('unlockFeatureBtn').onclick = async function() {
+        const token = document.getElementById('token').value.trim();
+        const modelId = document.getElementById('modelIdSelect').value.trim();
+        const featureId = document.getElementById('featureSelect').value;
+        if (!token || !modelId || !featureId) return;
+        try {
+          const resp = await fetch('http://localhost:8080/models/' + encodeURIComponent(modelId) + '/features/' + encodeURIComponent(featureId) + '/unlock', { method: 'POST', headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' }, body: JSON.stringify({ }) });
+          if (resp.status === 403) { document.getElementById('lockStatus').textContent = 'Unlock forbidden'; return; }
+          if (!resp.ok) { document.getElementById('lockStatus').textContent = 'Unlock failed: ' + resp.status; return; }
+          document.getElementById('lockStatus').textContent = 'Unlocked';
+        } catch (e) { document.getElementById('lockStatus').textContent = 'Unlock request failed'; }
+      };
+
+      // lock controls
+          document.getElementById('lockBtn').onclick = function(){
+        if (!stompClient) { alert('Connect first'); return; }
+        const modelId = document.getElementById('lockModelId').value;
+        // auto-subscribe to model if not already
+        if (modelId && (!currentModelId || currentModelId !== modelId)) { subscribeToModel(modelId); }
+        const ev = {
+          modelId: modelId,
+          featureId: document.getElementById('lockFeatureId').value,
+          level: document.getElementById('lockLevel').value,
+          action: 'LOCK',
+          user: 'testUser',
+          timestamp: new Date().toISOString()
+        };
+        stompClient.send('/app/model/lock', {}, JSON.stringify(ev));
+        permLogMsg('Sent LOCK: ' + JSON.stringify(ev));
+      };
+
+      document.getElementById('unlockBtn').onclick = function(){
+        if (!stompClient) { alert('Connect first'); return; }
+        const modelId = document.getElementById('lockModelId').value;
+        if (modelId && (!currentModelId || currentModelId !== modelId)) { subscribeToModel(modelId); }
+        const ev = {
+          modelId: modelId,
+          featureId: document.getElementById('lockFeatureId').value,
+          level: document.getElementById('lockLevel').value,
+          action: 'UNLOCK',
+          user: 'testUser',
+          timestamp: new Date().toISOString()
+        };
+        stompClient.send('/app/model/lock', {}, JSON.stringify(ev));
+        permLogMsg('Sent UNLOCK: ' + JSON.stringify(ev));
+      };
+
+      // file add control
+      document.getElementById('fileAddBtn').onclick = function(){
+        if (!stompClient) { alert('Connect first'); return; }
+        const modelId = document.getElementById('fileModelId').value;
+        if (modelId && (!currentModelId || currentModelId !== modelId)) { subscribeToModel(modelId); }
+        const ev = {
+          modelId: modelId,
+          fileId: 'file-' + Math.floor(Math.random()*10000),
+          fileName: document.getElementById('fileName').value,
+          author: 'testUser',
+          timestamp: new Date().toISOString()
+        };
+        stompClient.send('/app/file/add', {}, JSON.stringify(ev));
+        permLogMsg('Sent FILE_ADD: ' + JSON.stringify(ev));
+      };
     }, function(err){
       status.textContent = 'Error: ' + err;
       logMsg('Connect error: ' + JSON.stringify(err));
